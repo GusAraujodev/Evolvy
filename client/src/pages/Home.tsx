@@ -58,6 +58,27 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const checkAndRoute = async (userId: string) => {
+    try {
+      const [{ data: prof }, { data: anam }] = await Promise.all([
+        supabase.from('profiles').select('name, weight_kg, height_cm').eq('id', userId).single(),
+        supabase.from('anamneses').select('id').eq('user_id', userId).limit(1).maybeSingle(),
+      ]);
+      const perfilCompleto = prof?.name && prof?.weight_kg && prof?.height_cm;
+      if (prof?.name) setProfile(p => ({ ...p, name: prof.name }));
+      if (perfilCompleto && anam) {
+        setStage('app');
+      } else if (perfilCompleto && !anam) {
+        setStage('onboarding');
+      } else {
+        setStage('data');
+      }
+    } catch (error) {
+      console.error("Erro no roteamento:", error);
+      setStage('data');
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setProfile({ name: '', birthDate: '', weight: '', height: '' });
@@ -85,7 +106,11 @@ export default function Home() {
         <motion.div key="auth" {...fade}>
           <Auth
             onBack={() => setStage('splash')}
-            onAuthenticated={() => setStage('data')}
+            onAuthenticated={async () => {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) await checkAndRoute(user.id);
+              else setStage('data');
+            }}
           />
         </motion.div>
       )}
