@@ -170,20 +170,30 @@ export function Profile({
 
     const weightNum = parseFloat(editData.weight);
     const heightNum = parseInt(editData.height);
-    const ageNum = parseInt(editData.birthDate); // Captura o número digitado no input de idade
+    let ageNum: number | null = null;
+    if (editData.birthDate) {
+      const birth = new Date(editData.birthDate);
+      if (!isNaN(birth.getTime())) {
+        const today = new Date();
+        let a = today.getFullYear() - birth.getFullYear();
+        const m = today.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+        ageNum = a;
+      }
+    }
 
     // Salva na tabela contendo exclusivamente os campos homologados que seu banco aceita
     await supabase.from('profiles').upsert({
       id: user.id,
       name: editData.name,
-      age: isNaN(ageNum) ? (age ?? null) : ageNum,
+      age: ageNum ?? dbAge ?? null,
       weight_kg: isNaN(weightNum) ? null : weightNum,
       height_cm: isNaN(heightNum) ? null : heightNum,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' });
 
     // Atualiza estados reativos locais para refletir em tela imediatamente
-    if (!isNaN(ageNum)) setDbAge(ageNum);
+    if (ageNum !== null) setDbAge(ageNum);
     if (!isNaN(weightNum)) setDbWeight(weightNum);
     if (!isNaN(heightNum)) setDbHeight(heightNum);
     

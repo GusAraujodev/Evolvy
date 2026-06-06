@@ -36,7 +36,7 @@ export default function Home() {
         return;
       }
       const [{ data: prof }, { data: anam }] = await Promise.all([
-        supabase.from('profiles').select('name, weight_kg, height_cm').eq('id', session.user.id).single(),
+        supabase.from('profiles').select('name, weight_kg, height_cm').eq('id', session.user.id).maybeSingle(),
         supabase.from('anamneses').select('id').eq('user_id', session.user.id).limit(1).maybeSingle(),
       ]);
       const perfilCompleto = prof?.name && prof?.weight_kg && prof?.height_cm;
@@ -61,7 +61,7 @@ export default function Home() {
   const checkAndRoute = async (userId: string) => {
     try {
       const [{ data: prof }, { data: anam }] = await Promise.all([
-        supabase.from('profiles').select('name, weight_kg, height_cm').eq('id', userId).single(),
+        supabase.from('profiles').select('name, weight_kg, height_cm').eq('id', userId).maybeSingle(),
         supabase.from('anamneses').select('id').eq('user_id', userId).limit(1).maybeSingle(),
       ]);
       const perfilCompleto = prof?.name && prof?.weight_kg && prof?.height_cm;

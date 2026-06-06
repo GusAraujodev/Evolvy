@@ -44,6 +44,7 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
   const [realName, setRealName] = useState('');
   const [planStatus, setPlanStatus] = useState<'loading' | 'pending' | 'ready'>('loading');
   const [workoutToday, setWorkoutToday] = useState<{ foco: string; tipo: string; exerciciosCount?: number; duracao?: string } | null>(null);
+  const [planMeals, setPlanMeals] = useState<Array<{id: string; label: string; time: string; kcal: number}>>([]);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [waterMl, setWaterMl] = useState(0);
   const [workoutDone, setWorkoutDone] = useState(false);
@@ -71,22 +72,40 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
           const approved = plans.filter((p) => p.status === 'approved');
           const workout = (approved.length > 0 ? approved : plans).find((p) => p.type === 'workout');
 
-          if (workout?.content?.semana) {
-            const days = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-            const todayIdx = new Date().getDay();
-            const todayKey = days[todayIdx];
-            
-            const todayWorkout = workout.content.semana[todayKey] || workout.content.semana[todayIdx % workout.content.semana.length];
-            
+          if (workout?.content?.semana && Array.isArray(workout.content.semana)) {
+            // JS getDay(): 0=Dom, 1=Seg ... 6=Sab
+            // semana da IA começa em Segunda (índice 0)
+            const jsDayOfWeek = new Date().getDay(); // 0=Dom
+            // Converte para índice da semana da IA (Segunda=0 ... Domingo=6)
+            const aiDayIndex = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
+            const semana = workout.content.semana;
+            const todayWorkout = semana[aiDayIndex] ?? semana[0];
+
             if (todayWorkout) {
               setWorkoutToday({
-                foco: todayWorkout.foco || 'Geral',
-                tipo: todayWorkout.tipo || 'treino',
-                exerciciosCount: todayWorkout.exercicios?.length || 8,
-                duracao: todayWorkout.duracao || '~45 min'
+                foco: todayWorkout.foco ?? todayWorkout.name ?? 'Treino do dia',
+                tipo: todayWorkout.tipo ?? 'treino',
+                exerciciosCount: Array.isArray(todayWorkout.exercicios)
+                  ? todayWorkout.exercicios.length
+                  : 0,
+                duracao: todayWorkout.duracao_minutos
+                  ? `~${todayWorkout.duracao_minutos} min`
+                  : '~60 min',
               });
             }
           }
+
+          const nutritionPlan = plans.find((p) => p.type === 'nutrition');
+          if (nutritionPlan?.content?.refeicoes && Array.isArray(nutritionPlan.content.refeicoes)) {
+            const mapped = nutritionPlan.content.refeicoes.map((r: any, i: number) => ({
+              id: `meal-${i}`,
+              label: r.nome ?? r.name ?? `Refeição ${i + 1}`,
+              time: r.horario ?? r.time ?? '',
+              kcal: r.kcal_total ?? r.calories ?? 0,
+            }));
+            setPlanMeals(mapped);
+          }
+
           setPlanStatus('ready');
         }
 
@@ -323,8 +342,9 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                 >
                   <h2 className="text-xl md:text-2xl font-black tracking-tight mb-4">Sua rotina</h2>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {meals.map((m) => {
-                      const Icon = m.icon;
+                    {(planMeals.length > 0 ? planMeals : meals.map(m => ({
+                      id: m.id, label: m.label, time: m.time, kcal: 520
+                    }))).map((m) => {
                       const done = !!checked[m.id];
                       return (
                         <button
@@ -333,11 +353,13 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                           className="bg-card rounded-2xl p-4 md:p-5 flex flex-col sm:flex-row md:flex-col items-start gap-4 shadow-soft active:scale-[0.99] transition-all hover:shadow-md border-2 border-foreground/8"
                         >
                           <div className="w-12 h-12 rounded-xl bg-background flex items-center justify-center shrink-0">
-                            <Icon className="w-5 h-5 text-foreground" />
+                            <UtensilsCrossed className="w-5 h-5 text-foreground" />
                           </div>
                           <div className="flex-1 text-left">
                             <p className="font-bold text-foreground">{m.label}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{m.time} · ~520 kcal</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {m.time}{m.kcal > 0 ? ` · ${m.kcal} kcal` : ''}
+                            </p>
                           </div>
                           <div
                             className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all shrink-0 ${

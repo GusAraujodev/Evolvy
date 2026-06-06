@@ -154,8 +154,6 @@ export function Nutrition({
   const [realNutrition, setRealNutrition] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(shoppingListData);
-  void checkedMeals;
-  void setCheckedMeals;
 
   useEffect(() => {
     const load = async () => {
@@ -311,49 +309,68 @@ export function Nutrition({
 
             {/* Meals */}
             <div className="space-y-4">
-              {resolvedMeals.map((meal, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className="bg-card rounded-2xl p-6 border-2 border-border"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-black">{meal.name}</h3>
-                      <p className="text-sm text-muted-foreground">{meal.time}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-black text-primary">{meal.calories}</p>
-                      <p className="text-xs text-muted-foreground">kcal</p>
-                    </div>
-                  </div>
-
-                  {/* Foods */}
-                  <div className="space-y-2 mb-4">
-                    {meal.foods.map((food, foodIdx) => (
-                      <div key={foodIdx} className="flex items-center justify-between text-sm">
-                        <span className="text-foreground">{food.name}</span>
-                        <span className="text-muted-foreground">{food.amount} • {food.calories} kcal</span>
+              {resolvedMeals.map((meal, idx) => {
+                const mealId = `meal-${idx}`;
+                const isDone = checkedMeals ? !!checkedMeals[mealId] : false;
+                return (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="bg-card rounded-2xl p-6 border-2 border-border"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-black">{meal.name}</h3>
+                        <p className="text-sm text-muted-foreground">{meal.time}</p>
                       </div>
-                    ))}
-                  </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-2xl font-black text-primary">{meal.calories}</p>
+                          <p className="text-xs text-muted-foreground">kcal</p>
+                        </div>
+                        {setCheckedMeals && (
+                          <button
+                            onClick={() => {
+                              const updated = { ...(checkedMeals ?? {}), [mealId]: !isDone };
+                              setCheckedMeals(updated);
+                            }}
+                            className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
+                              isDone ? 'bg-primary border-primary' : 'border-foreground/20 hover:border-primary'
+                            }`}
+                          >
+                            {isDone && <Check className="w-4 h-4 text-primary-foreground" />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-                  {/* Macros */}
-                  <div className="flex flex-wrap gap-3 text-xs">
-                    <span className="bg-primary/10 text-primary px-3 py-1 rounded-full font-semibold">
-                      P: {meal.macros.protein}g
-                    </span>
-                    <span className="bg-accent/10 text-accent px-3 py-1 rounded-full font-semibold">
-                      C: {meal.macros.carbs}g
-                    </span>
-                    <span className="bg-destructive/10 text-destructive px-3 py-1 rounded-full font-semibold">
-                      G: {meal.macros.fat}g
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
+                    {/* Foods */}
+                    <div className="space-y-2 mb-4">
+                      {meal.foods.map((food, foodIdx) => (
+                        <div key={foodIdx} className="flex items-center justify-between text-sm">
+                          <span className="text-foreground">{food.name}</span>
+                          <span className="text-muted-foreground">{food.amount} • {food.calories} kcal</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Macros */}
+                    <div className="flex flex-wrap gap-3 text-xs">
+                      <span className="bg-primary/10 text-primary px-3 py-1 rounded-full font-semibold">
+                        P: {meal.macros.protein}g
+                      </span>
+                      <span className="bg-accent/10 text-accent px-3 py-1 rounded-full font-semibold">
+                        C: {meal.macros.carbs}g
+                      </span>
+                      <span className="bg-destructive/10 text-destructive px-3 py-1 rounded-full font-semibold">
+                        G: {meal.macros.fat}g
+                      </span>
+                    </div>
+                  </motion.div>
+                );
+              })}
 
               {nutritionTips.length > 0 && (
                 <div className="bg-card rounded-2xl p-6 border-2 border-border space-y-3">
