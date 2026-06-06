@@ -141,11 +141,21 @@ function normalizeNutritionMeals(refeicoes: any): Meal[] | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-export function Nutrition({ onBack }: { onBack: () => void }) {
+export function Nutrition({
+  onBack,
+  checkedMeals,
+  setCheckedMeals,
+}: {
+  onBack: () => void;
+  checkedMeals?: Record<string, boolean>;
+  setCheckedMeals?: (val: Record<string, boolean>) => void;
+}) {
   const [activeTab, setActiveTab] = useState<Tab>('diet');
   const [realNutrition, setRealNutrition] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(shoppingListData);
+  void checkedMeals;
+  void setCheckedMeals;
 
   useEffect(() => {
     const load = async () => {

@@ -194,7 +194,15 @@ function normalizeRealPlan(content: any): Workout[] | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-export function Workouts({ onBack }: { onBack: () => void }) {
+export function Workouts({
+  onBack,
+  workoutDone,
+  setWorkoutDone,
+}: {
+  onBack: () => void;
+  workoutDone?: boolean;
+  setWorkoutDone?: (val: boolean) => void;
+}) {
   const today = new Date();
   const todayDayOfWeek = today.getDay();
   const dayIndex = todayDayOfWeek === 0 ? 6 : todayDayOfWeek - 1;
@@ -230,6 +238,12 @@ export function Workouts({ onBack }: { onBack: () => void }) {
         });
     });
   }, []);
+
+    useEffect(() => {
+      if (typeof workoutDone === 'boolean') {
+        setCompleted((prev) => ({ ...prev, [todayKey]: workoutDone }));
+      }
+    }, [workoutDone, todayKey]);
 
   const resolvedWorkoutPlan = useMemo(
     () => (realPlan?.semana ? normalizeRealPlan(realPlan) : null) ?? workoutPlan,
@@ -387,7 +401,15 @@ export function Workouts({ onBack }: { onBack: () => void }) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                onClick={() => setCompleted((p) => ({ ...p, [selectedDay]: !p[selectedDay] }))}
+                onClick={() => {
+                  setCompleted((p) => {
+                    const nextValue = !p[selectedDay];
+                    if (selectedDay === todayKey) {
+                      setWorkoutDone?.(nextValue);
+                    }
+                    return { ...p, [selectedDay]: nextValue };
+                  });
+                }}
                 className={`w-full py-4 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 ${
                   completed[selectedDay]
                     ? 'bg-primary text-primary-foreground shadow-glow'

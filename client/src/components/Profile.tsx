@@ -31,10 +31,12 @@ export function Profile({
   profile,
   onBack,
   onLogout,
+  onNameUpdate,
 }: {
   profile: ProfileData;
   onBack: () => void;
   onLogout: () => void;
+  onNameUpdate?: (name: string) => void;
 }) {
   const [dbAge, setDbAge] = useState<number | null>(null);
   const [dbWeight, setDbWeight] = useState<number | null>(null);
@@ -74,18 +76,20 @@ export function Profile({
         .eq('id', user.id)
         .single();
       if (data) {
+        const resolvedName = data.name ?? profile.name;
         setLoadedProfile({
-          name: data.name ?? profile.name,
+          name: resolvedName,
           birthDate: profile.birthDate,
           weight: data.weight_kg?.toString() ?? profile.weight,
           height: data.height_cm?.toString() ?? profile.height,
         });
         setEditData({
-          name: data.name ?? profile.name,
+          name: resolvedName,
           birthDate: profile.birthDate,
           weight: data.weight_kg?.toString() ?? profile.weight,
           height: data.height_cm?.toString() ?? profile.height,
         });
+        onNameUpdate?.(resolvedName);
       }
     };
     load();
