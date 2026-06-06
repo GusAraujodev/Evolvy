@@ -48,12 +48,12 @@ export function Profile({
   const [dbWeight, setDbWeight] = useState<number | null>(null);
   const [dbHeight, setDbHeight] = useState<number | null>(null);
 
-  // Busca dados do Supabase na inicialização para popular estados primitivos
+ // Busca dados do Supabase na inicialização para popular estados primitivos
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       supabase.from('profiles')
-        .select('name, age, weight_kg, height_cm')
+        .select('name, age, weight_kg, height_cm, avatar_url')
         .eq('id', user.id)
         .single()
         .then(({ data }) => {
@@ -61,6 +61,7 @@ export function Profile({
           if (data.age) setDbAge(data.age);
           if (data.weight_kg) setDbWeight(data.weight_kg);
           if (data.height_cm) setDbHeight(data.height_cm);
+          if (data.avatar_url) setProfilePhoto(data.avatar_url);
         });
     });
   }, []);
@@ -71,7 +72,7 @@ export function Profile({
   const [editData, setEditData] = useState(profile);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sincroniza dados completos da tabela com os estados locais do formulário
+ // Sincroniza dados completos da tabela com os estados locais do formulário
   useEffect(() => {
     const load = async () => {
       const {
@@ -80,7 +81,7 @@ export function Profile({
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('name, age, weight_kg, height_cm')
+        .select('name, age, weight_kg, height_cm, avatar_url')
         .eq('id', user.id)
         .single();
       if (data) {
@@ -97,6 +98,7 @@ export function Profile({
           weight: data.weight_kg?.toString() ?? profile.weight,
           height: data.height_cm?.toString() ?? profile.height,
         });
+        if (data.avatar_url) setProfilePhoto(data.avatar_url);
         onNameUpdate?.(resolvedName);
       }
     };
@@ -110,16 +112,55 @@ export function Profile({
   const imc = calculateIMC(weight, height);
   const imcCategory = getIMCCategory(imc);
 
-  // Leitura local de arquivos de foto
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Processa o upload seguro e real de imagens para o Supabase Storage
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setProfilePhoto(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Valida se é imagem mesmo
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Formato de arquivo não suportado. Use apenas JPG, PNG ou WEBP.');
+      return;
     }
+
+    // Valida o limite de tamanho (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Arquivo muito grande. O limite máximo permitido é 5MB.');
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Define o caminho organizando por ID de usuário
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${user.id}/avatar-${Date.now()}.${fileExt}`;
+
+    // Faz o upload para o Storage
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      console.error('Erro de upload:', uploadError.message);
+      return;
+    }
+
+    // Pega a URL pública gerada
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    // Salva o link da foto na coluna avatar_url da tabela profiles
+    await supabase.from('profiles').upsert({
+      id: user.id,
+      avatar_url: publicUrl,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+    // Mostra a foto na tela na mesma hora
+    setProfilePhoto(publicUrl);
   };
 
   // Envia as alterações validadas para o banco usando apenas as colunas válidas da tabela
