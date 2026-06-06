@@ -4,7 +4,9 @@ import { ChevronLeft, Upload, Edit2, LogOut, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { ProfileData } from './DataCapture';
 
+// Calcula a idade com base em uma string de data
 function calculateAge(birthDate: string): number {
+  if (!birthDate) return 0;
   const date = new Date(birthDate);
   const today = new Date();
   let age = today.getFullYear() - date.getFullYear();
@@ -15,12 +17,16 @@ function calculateAge(birthDate: string): number {
   return age;
 }
 
+// Calcula o valor do IMC
 function calculateIMC(weight: number, height: number): number {
+  if (!weight || !height) return 0;
   const heightInMeters = height / 100;
   return weight / (heightInMeters * heightInMeters);
 }
 
+// Retorna a classificação textual e visual do IMC calculado
 function getIMCCategory(imc: number): { label: string; color: string } {
+  if (imc <= 0) return { label: 'Dados inválidos', color: 'text-muted-foreground' };
   if (imc < 18.5) return { label: 'Abaixo do peso', color: 'text-blue-500' };
   if (imc < 25) return { label: 'Peso normal', color: 'text-green-500' };
   if (imc < 30) return { label: 'Sobrepeso', color: 'text-yellow-500' };
@@ -42,6 +48,7 @@ export function Profile({
   const [dbWeight, setDbWeight] = useState<number | null>(null);
   const [dbHeight, setDbHeight] = useState<number | null>(null);
 
+  // Busca dados do Supabase na inicialização para popular estados primitivos
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
@@ -64,6 +71,7 @@ export function Profile({
   const [editData, setEditData] = useState(profile);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Sincroniza dados completos da tabela com os estados locais do formulário
   useEffect(() => {
     const load = async () => {
       const {
@@ -95,12 +103,14 @@ export function Profile({
     load();
   }, []);
 
-  const age = dbAge ?? calculateAge(profile.birthDate) ?? 0;
-  const weight = dbWeight ?? Number(profile.weight);
-  const height = dbHeight ?? Number(profile.height);
+  // Definições de fallback de layout baseados nos estados reativos
+  const age = dbAge ?? (profile.birthDate ? calculateAge(profile.birthDate) : null) ?? 0;
+  const weight = dbWeight ?? Number(profile.weight) ?? 0;
+  const height = dbHeight ?? Number(profile.height) ?? 0;
   const imc = calculateIMC(weight, height);
   const imcCategory = getIMCCategory(imc);
 
+  // Leitura local de arquivos de foto
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -112,14 +122,38 @@ export function Profile({
     }
   };
 
-  const handleSaveEdit = () => {
-    // TODO: Integrar com backend para salvar dados atualizados
+  // Envia as alterações validadas para o banco usando apenas as colunas válidas da tabela
+  const handleSaveEdit = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setIsEditing(false); return; }
+
+    const weightNum = parseFloat(editData.weight);
+    const heightNum = parseInt(editData.height);
+    const ageNum = parseInt(editData.birthDate); // Captura o número digitado no input de idade
+
+    // Salva na tabela contendo exclusivamente os campos homologados que seu banco aceita
+    await supabase.from('profiles').upsert({
+      id: user.id,
+      name: editData.name,
+      age: isNaN(ageNum) ? (age ?? null) : ageNum,
+      weight_kg: isNaN(weightNum) ? null : weightNum,
+      height_cm: isNaN(heightNum) ? null : heightNum,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+    // Atualiza estados reativos locais para refletir em tela imediatamente
+    if (!isNaN(ageNum)) setDbAge(ageNum);
+    if (!isNaN(weightNum)) setDbWeight(weightNum);
+    if (!isNaN(heightNum)) setDbHeight(heightNum);
+    
+    setLoadedProfile({ ...editData });
+    onNameUpdate?.(editData.name);
     setIsEditing(false);
   };
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-24 lg:pb-8">
-      {/* Header */}
+      {/* Cabeçalho */}
       <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="container py-4 flex items-center gap-4">
           <button
@@ -136,16 +170,16 @@ export function Profile({
         </div>
       </div>
 
-      {/* Content */}
+      {/* Conteúdo */}
       <div className="flex-1 container py-8 max-w-3xl">
-        {/* Profile Card */}
+        {/* Cartão do Perfil */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-card rounded-3xl p-8 border-2 border-border mb-8"
         >
           <div className="flex gap-6 items-start">
-            {/* Photo */}
+            {/* Foto */}
             <div className="relative">
               <div className="w-24 h-24 rounded-2xl bg-linear-to-br from-primary to-primary/50 flex items-center justify-center overflow-hidden shrink-0">
                 {profilePhoto ? (
@@ -169,9 +203,21 @@ export function Profile({
               />
             </div>
 
-            {/* Info */}
+            {/* Informações básicas com Input condicional de Nome */}
             <div className="flex-1">
-              <h2 className="text-3xl font-black">{loadedProfile.name}</h2>
+              {isEditing ? (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Nome</label>
+                  <input
+                    type="text"
+                    value={editData.name}
+                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    className="w-full max-w-sm px-3 py-1.5 rounded-lg border border-border bg-background text-base font-semibold outline-none focus:border-primary"
+                  />
+                </div>
+              ) : (
+                <h2 className="text-3xl font-black">{loadedProfile.name}</h2>
+              )}
               <div className="flex items-center gap-2 mt-3 bg-primary/10 px-4 py-2 rounded-full w-fit">
                 <Zap className="w-4 h-4 text-primary" />
                 <span className="text-sm font-bold text-primary">Plano Premium</span>
@@ -180,7 +226,7 @@ export function Profile({
           </div>
         </motion.div>
 
-        {/* My Data Section */}
+        {/* Seção de Dados */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -198,16 +244,25 @@ export function Profile({
             </button>
           </div>
 
-          {/* Data Grid */}
+          {/* Grade de Informações contendo inputs para edição */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Age */}
+            {/* Idade com Input condicional numérico para o banco */}
             <div className="bg-card rounded-2xl p-6 border-2 border-border">
               <p className="text-xs font-bold text-muted-foreground uppercase">Idade</p>
               <p className="text-4xl font-black mt-3">{age}</p>
               <p className="text-xs text-muted-foreground mt-2">anos</p>
+              {isEditing && (
+                <input
+                  type="number"
+                  value={editData.birthDate} // Reutiliza a propriedade de string para tráfego local do número digitado
+                  onChange={(e) => setEditData({ ...editData, birthDate: e.target.value })}
+                  placeholder="Nova idade"
+                  className="w-full mt-2 px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                />
+              )}
             </div>
 
-            {/* Height */}
+            {/* Altura */}
             <div className="bg-card rounded-2xl p-6 border-2 border-border">
               <p className="text-xs font-bold text-muted-foreground uppercase">Altura</p>
               <div className="flex items-baseline gap-2 mt-3">
@@ -224,7 +279,7 @@ export function Profile({
               )}
             </div>
 
-            {/* Weight */}
+            {/* Peso */}
             <div className="bg-card rounded-2xl p-6 border-2 border-border">
               <p className="text-xs font-bold text-muted-foreground uppercase">Peso</p>
               <div className="flex items-baseline gap-2 mt-3">
@@ -251,7 +306,7 @@ export function Profile({
             </div>
           </div>
 
-          {/* Save Button */}
+          {/* Botão Salvar */}
           {isEditing && (
             <motion.button
               initial={{ opacity: 0, y: 10 }}
@@ -264,7 +319,7 @@ export function Profile({
           )}
         </motion.div>
 
-        {/* Logout Button */}
+        {/* Botão Sair */}
         <motion.button
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

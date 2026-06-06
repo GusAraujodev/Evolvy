@@ -12,17 +12,16 @@ import {
   Droplets,
   Plus,
   Minus,
-  Moon as MoonIcon,
   Sun,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useDeviceType } from '@/hooks/useDeviceType';
 import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { Workouts } from './Workouts';
 import { Nutrition } from './Nutrition';
 import { Profile } from './Profile';
 import { supabase } from '@/lib/supabase';
+import { ProfileData } from './DataCapture';
 
 const WATER_GOAL_ML = 2500;
 const WATER_STEP_ML = 250;
@@ -41,88 +40,79 @@ const meals: Meal[] = [
   { id: 'm3', key: 'dinner', label: 'Jantar', time: '19:30', icon: Moon },
 ];
 
-import { ProfileData } from './DataCapture';
-
 export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogout: () => void }) {
   const [realName, setRealName] = useState('');
   const [planStatus, setPlanStatus] = useState<'loading' | 'pending' | 'ready'>('loading');
-  const [workoutToday, setWorkoutToday] = useState<string>('');
-  const [workoutPlan, setWorkoutPlan] = useState<any>(null);
-  const [nutritionPlan, setNutritionPlan] = useState<any>(null);
+  const [workoutToday, setWorkoutToday] = useState<{ foco: string; tipo: string; exerciciosCount?: number; duracao?: string } | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [waterMl, setWaterMl] = useState(0);
   const [workoutDone, setWorkoutDone] = useState(false);
   const [currentPage, setCurrentPage] = useState<'home' | 'workouts' | 'nutrition' | 'profile'>('home');
-  const { theme, setTheme, isDark } = useTheme();
-  const deviceType = useDeviceType();
+  const { setTheme, isDark } = useTheme();
 
   useEffect(() => {
-    const load = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+    const loadDashboardData = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-      const { data: prof } = await supabase.from('profiles').select('name').eq('id', user.id).single();
-      if (prof?.name) setRealName(prof.name);
+        const { data: prof } = await supabase.from('profiles').select('name').eq('id', user.id).single();
+        if (prof?.name) setRealName(prof.name);
 
-      const { data: plans } = await supabase
-        .from('plans')
-        .select('type, content, status')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        const { data: plans } = await supabase
+          .from('plans')
+          .select('type, content, status')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      if (!plans || plans.length === 0) {
-        setPlanStatus('pending');
-        return;
-      }
+        if (!plans || plans.length === 0) {
+          setPlanStatus('pending');
+        } else {
+          const approved = plans.filter((p) => p.status === 'approved');
+          const workout = (approved.length > 0 ? approved : plans).find((p) => p.type === 'workout');
 
-      const approved = plans.filter((p) => p.status === 'approved');
-      const workout = (approved.length > 0 ? approved : plans).find((p) => p.type === 'workout');
-      const nutrition = (approved.length > 0 ? approved : plans).find((p) => p.type === 'nutrition');
+          if (workout?.content?.semana) {
+            const days = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+            const todayIdx = new Date().getDay();
+            const todayKey = days[todayIdx];
+            
+            const todayWorkout = workout.content.semana[todayKey] || workout.content.semana[todayIdx % workout.content.semana.length];
+            
+            if (todayWorkout) {
+              setWorkoutToday({
+                foco: todayWorkout.foco || 'Geral',
+                tipo: todayWorkout.tipo || 'treino',
+                exerciciosCount: todayWorkout.exercicios?.length || 8,
+                duracao: todayWorkout.duracao || '~45 min'
+              });
+            }
+          }
+          setPlanStatus('ready');
+        }
 
-      if (workout) {
-        setWorkoutPlan(workout.content);
-        if (workout.content?.semana) {
-          const days = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-          const todayIdx = new Date().getDay();
-          const todayWorkout = workout.content.semana[todayIdx % workout.content.semana.length];
-          if (todayWorkout?.tipo === 'treino') {
-            setWorkoutToday(todayWorkout.foco);
+        const todayDateStr = new Date().toISOString().split('T')[0];
+        const { data: checkin } = await supabase
+          .from('daily_checkins')
+          .select('water_ml, meals_done, workout_done')
+          .eq('user_id', user.id)
+          .eq('date', todayDateStr)
+          .maybeSingle();
+
+        if (checkin) {
+          setWaterMl(checkin.water_ml ?? 0);
+          setWorkoutDone(checkin.workout_done ?? false);
+          if (checkin.meals_done) {
+            const obj: Record<string, boolean> = {};
+            checkin.meals_done.forEach((id: string) => { obj[id] = true; });
+            setChecked(obj);
           }
         }
-      }
-
-      if (nutrition) setNutritionPlan(nutrition.content);
-      setPlanStatus(approved.length > 0 ? 'ready' : 'pending');
-
-      // Carregar checkin de hoje
-      const today = new Date().toISOString().split('T')[0];
-      const { data: checkin } = await supabase
-        .from('daily_checkins')
-        .select('water_ml, meals_done, workout_done')
-        .eq('user_id', user.id)
-        .eq('date', today)
-        .maybeSingle();
-
-      if (checkin) {
-        setWaterMl(checkin.water_ml ?? 0);
-        setWorkoutDone(checkin.workout_done ?? false);
-        if (checkin.meals_done) {
-          const obj: Record<string, boolean> = {};
-          checkin.meals_done.forEach((id: string) => {
-            obj[id] = true;
-          });
-          setChecked(obj);
-        }
-      } else {
-        setWaterMl(0);
-        setWorkoutDone(false);
-        setChecked({});
+      } catch (error) {
+        console.error('Erro ao carregar dados do dashboard:', error);
       }
     };
 
-    load();
+    loadDashboardData();
   }, []);
 
   const saveCheckin = async (
@@ -130,15 +120,14 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
     newChecked: Record<string, boolean>,
     newWorkoutDone: boolean
   ) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const today = new Date().toISOString().split('T')[0];
+    
+    const todayDateStr = new Date().toISOString().split('T')[0];
     await supabase.from('daily_checkins').upsert(
       {
         user_id: user.id,
-        date: today,
+        date: todayDateStr,
         water_ml: newWater,
         meals_done: Object.keys(newChecked).filter((k) => newChecked[k]),
         workout_done: newWorkoutDone,
@@ -148,14 +137,8 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
     );
   };
 
-  const handleWaterAdd = () => {
-    const newVal = Math.min(waterMl + WATER_STEP_ML, WATER_GOAL_ML);
-    setWaterMl(newVal);
-    saveCheckin(newVal, checked, workoutDone);
-  };
-
-  const handleWaterRemove = () => {
-    const newVal = Math.max(0, waterMl - WATER_STEP_ML);
+  const handleWaterChange = (step: number) => {
+    const newVal = Math.max(0, Math.min(waterMl + step, WATER_GOAL_ML));
     setWaterMl(newVal);
     saveCheckin(newVal, checked, workoutDone);
   };
@@ -173,7 +156,7 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
   };
 
   const today = new Date();
-  const isRestDay = today.getDay() === 0;
+  const isRestDay = workoutToday?.tipo === 'descanso' || today.getDay() === 0;
 
   const progress = useMemo(() => {
     const mealPts = Object.values(checked).filter(Boolean).length * 20;
@@ -195,11 +178,10 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
     month: 'long',
   });
 
-  const waterPercent = Math.min(100, (waterMl / WATER_GOAL_ML) * 100);
+  const waterPercent = (waterMl / WATER_GOAL_ML) * 100;
 
   return (
     <div className="min-h-screen bg-background flex flex-col lg:flex-row">
-      {/* Sidebar - Desktop Only */}
       <Sidebar
         userName={realName || profile.name}
         currentPage={currentPage}
@@ -207,11 +189,9 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
         onLogout={onLogout}
       />
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col">
         {currentPage === 'home' && (
           <>
-            {/* Header */}
             <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border">
               <div className="container py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3 lg:hidden">
@@ -227,7 +207,7 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                     className="p-2 hover:bg-muted rounded-lg transition-colors"
                     aria-label="Alternar tema"
                   >
-                    {isDark ? <Sun className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
+                    {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
@@ -245,9 +225,7 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
               </div>
             )}
 
-            {/* Content */}
             <div className="flex-1 container py-8 md:py-12 max-w-5xl pb-24 lg:pb-8">
-              {/* Greeting */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -262,7 +240,6 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
               </motion.div>
 
               <div className="space-y-6">
-                {/* Treino do dia */}
                 <motion.section
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -290,16 +267,18 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                     >
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-xs font-bold opacity-70 uppercase tracking-wider">Push Day</p>
+                          <p className="text-xs font-bold opacity-70 uppercase tracking-wider">
+                            {workoutToday?.foco ? 'Treino Atual' : 'Push Day'}
+                          </p>
                           <h3 className="text-2xl md:text-3xl font-black mt-2 leading-tight">
-                            Peito, ombro e tríceps
+                            {workoutToday?.foco || 'Peito, ombro e tríceps'}
                           </h3>
                           <div className="flex flex-wrap items-center gap-4 mt-4 text-sm font-semibold">
                             <span className="flex items-center gap-1.5">
-                              <Dumbbell className="w-4 h-4" /> 8 exercícios
+                              <Dumbbell className="w-4 h-4" /> {workoutToday?.exerciciosCount || 8} exercícios
                             </span>
                             <span className="flex items-center gap-1.5">
-                              <Flame className="w-4 h-4" /> ~45 min
+                              <Flame className="w-4 h-4" /> {workoutToday?.duracao || '~45 min'}
                             </span>
                           </div>
                         </div>
@@ -315,7 +294,6 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                   )}
                 </motion.section>
 
-                {/* Progresso */}
                 <motion.section
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -338,7 +316,6 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                   </div>
                 </motion.section>
 
-                {/* Rotina de refeições */}
                 <motion.section
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -375,7 +352,6 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                   </div>
                 </motion.section>
 
-                {/* Widget de água */}
                 <motion.section
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -407,14 +383,14 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
 
                     <div className="flex gap-3">
                       <button
-                        onClick={handleWaterRemove}
+                        onClick={() => handleWaterChange(-WATER_STEP_ML)}
                         className="flex-1 bg-muted text-foreground font-bold py-3 rounded-xl hover:bg-muted/80 active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
                         <Minus className="w-4 h-4" />
                         <span className="hidden sm:inline">Remover</span>
                       </button>
                       <button
-                        onClick={handleWaterAdd}
+                        onClick={() => handleWaterChange(WATER_STEP_ML)}
                         className="flex-1 bg-primary text-primary-foreground font-bold py-3 rounded-xl hover:shadow-glow active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
                         <Plus className="w-4 h-4" />
@@ -424,7 +400,6 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
                   </div>
                 </motion.section>
 
-                {/* Suporte */}
                 <motion.section
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -452,7 +427,6 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
           </>
         )}
 
-        {/* Telas injetadas dinamicamente mantendo a Sidebar ativa */}
         {currentPage === 'workouts' && (
           <Workouts
             onBack={() => setCurrentPage('home')}
@@ -485,7 +459,6 @@ export function Dashboard({ profile, onLogout }: { profile: ProfileData; onLogou
         )}
       </main>
 
-      {/* Bottom Navigation - Mobile Only */}
       <BottomNav currentPage={currentPage} onNavigate={setCurrentPage} />
     </div>
   );
